@@ -1,0 +1,147 @@
+public class Print : ICommand
+{
+    private readonly IDatabaseManager manager;
+    private readonly IView view;
+    private string tableName;
+
+    public Print(IView view, IDatabaseManager manager)
+    {
+        this.view = view;
+        this.manager = manager;
+    }
+
+    public bool CanProcess(string command)
+    {
+        return command.StartsWith("print ");
+    }
+
+    public void Process(string command)
+    {
+        string[] commandPart = command.Split(' ');
+        ValidateCommand(commandPart);
+        tableName = commandPart[1];
+        IList<IDataSet> data = manager.GetTableData(tableName);
+        view.Write(GetTableData(data));
+    }
+
+    private void ValidateCommand(string[] commandPart)
+    {
+        if (commandPart.Length != 2)
+            throw new ArgumentException($"incorrect number of parameters. Expected 1, but is {commandPart.Length - 1}");
+    }
+
+    private string GetTableData(IList<IDataSet> data)
+    {
+        int maxColumnSize = GetMaxColumnSize(data);
+        if (maxColumnSize == 0)
+            return GetEmptyTable(tableName);
+        else
+            return GetHeaderAndTableData(data, maxColumnSize);
+    }
+
+    private string GetEmptyTable(string tableName)
+    {
+        string textEmptyTable = $"║ Table '{tableName}' is empty or does not exist ║";
+        int length = textEmptyTable.Length;
+        StringBuilder result = new StringBuilder()
+            .AppendLine($"╔{new string('═', length - 2)}╗")
+            .AppendLine(textEmptyTable)
+            .AppendLine($"╚{new string('═', length - 2)}╝");
+        return result.ToString();
+    }
+
+    private string GetHeaderAndTableData(IList<IDataSet> data, int maxColumnSize)
+    {
+        StringBuilder result = new StringBuilder();
+        int headerRowLength = GetHeaderRowLength(data, maxColumnSize);
+        AppendHorizontalLine(result, headerRowLength);
+        AppendHeaderRow(result, data, maxColumnSize);
+        AppendHorizontalLine(result, headerRowLength);
+        AppendTableData(result, data, maxColumnSize, headerRowLength);
+        AppendHorizontalLine(result, headerRowLength);
+        return result.ToString();
+    }
+
+    private int GetHeaderRowLength(IList<IDataSet> dataSets, int maxColumnSize)
+    {
+        int columnCount = GetColumnCount(dataSets);
+        return 3 + columnCount * (maxColumnSize + 2);
+    }
+
+    private void AppendHorizontalLine(StringBuilder sb, int length)
+    {
+        sb.AppendLine($"╔{new string('═', length - 2)}╗");
+    }
+
+    private void AppendHeaderRow(StringBuilder sb, IList<IDataSet> dataSets, int maxColumnSize)
+    {
+        IList<string> columnNames = dataSets[0].GetColumnNames();
+        int columnCount = GetColumnCount(dataSets);
+        sb.Append("║");
+        for (int column = 0; column < columnCount; column++)
+        {
+            string columnName = columnNames[column];
+            int columnNamesLength = columnName.Length;
+            int padding = (maxColumnSize - columnNamesLength) / 2;
+            sb.Append(' ', padding)
+                .Append(columnName)
+                .Append(' ', padding + (columnNamesLength % 2))
+                .Append("║");
+        }
+        sb.AppendLine();
+    }
+
+    private void AppendTableData(StringBuilder sb, IList<IDataSet> dataSets, int maxColumnSize, int headerRowLength)
+    {
+        int rowsCount = dataSets.Count;
+        int columnCount = GetColumnCount(dataSets);
+
+        for (int row = 0; row < rowsCount; row++)
+        {
+            IList<object> values = dataSets[row].GetValues();
+            sb.Append("║");
+            for (int column = 0; column < columnCount; column++)
+            {
+                string cellValue = values[column].ToString();
+                int valuesLength = cellValue.Length;
+                int padding = (maxColumnSize - valuesLength) / 2;
+                sb.Append(' ', padding)
+                    .Append(cellValue)
+                    .Append(' ', padding + (valuesLength % 2))
+                    .Append("║");
+            }
+            sb.AppendLine();
+
+            if (row < rowsCount - 1)
+            {
+                sb.AppendLine($"╠{new string('═', headerRowLength - 2)}╣");
+            }
+        }
+    }
+
+    private int GetMaxColumnSize(IList<IDataSet> dataSets)
+    {
+        if (dataSets.Count == 0)
+            return 0;
+
+        int maxColumnSize = GetMaxColumnSizeByHeader(dataSets[0]);
+        int maxColumnSizeByValue = GetMaxColumnSizeByValue(dataSets);
+        return Math.Max(maxColumnSize, maxColumnSizeByValue);
+    }
+
+    private int GetMaxColumnSizeByHeader(IDataSet dataSet)
+    {
+        IList<string> columnNames = dataSet.GetColumnNames();
+        return columnNames.Max(column => column.Length);
+    }
+
+    private int GetMaxColumnSizeByValue(IList<IDataSet> dataSets)
+    {
+        return dataSets.Max(dataSet => dataSet.GetValues().Max(x => x.ToString().Length));
+    }
+
+    private int GetColumnCount(IList<IDataSet> dataSets)
+    {
+        return dataSets.Count > 0 ? dataSets[0].GetColumnNames().Count : 0;
+    }
+}
